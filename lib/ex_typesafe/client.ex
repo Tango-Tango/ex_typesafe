@@ -388,32 +388,39 @@ defmodule ExTypesafe.Client do
 
   defp validate_criteria_keys(criteria, question_key) do
     criteria
-    |> Enum.reduce_while({:ok, MapSet.new()}, fn {key, _value}, {:ok, seen} ->
-      case wire_key(key) do
-        {:ok, encoded} ->
-          if MapSet.member?(seen, encoded) do
-            {:halt,
-             {:error,
-              Error.validation_error(
-                "question #{inspect(question_key)} criteria keys must not collide after JSON encoding: #{inspect(encoded)}"
-              )}}
-          else
-            {:cont, {:ok, MapSet.put(seen, encoded)}}
-          end
+    |> Enum.reduce_while({:ok, MapSet.new()}, &validate_criteria_key(&1, &2, question_key))
+    |> criteria_key_validation_result()
+  end
 
-        {:error, _} ->
-          {:halt,
-           {:error,
-            Error.validation_error(
-              "question #{inspect(question_key)} criteria keys must be atoms or strings, got: #{inspect(key)}"
-            )}}
-      end
-    end)
-    |> case do
-      {:ok, _seen} -> :ok
-      {:error, error} -> {:error, error}
+  defp validate_criteria_key({key, _value}, {:ok, seen}, question_key) do
+    case wire_key(key) do
+      {:ok, encoded} -> validate_unique_criteria_key(encoded, seen, question_key)
+      {:error, _} -> invalid_criteria_key(key, question_key)
     end
   end
+
+  defp validate_unique_criteria_key(encoded, seen, question_key) do
+    if MapSet.member?(seen, encoded) do
+      {:halt,
+       {:error,
+        Error.validation_error(
+          "question #{inspect(question_key)} criteria keys must not collide after JSON encoding: #{inspect(encoded)}"
+        )}}
+    else
+      {:cont, {:ok, MapSet.put(seen, encoded)}}
+    end
+  end
+
+  defp invalid_criteria_key(key, question_key) do
+    {:halt,
+     {:error,
+      Error.validation_error(
+        "question #{inspect(question_key)} criteria keys must be atoms or strings, got: #{inspect(key)}"
+      )}}
+  end
+
+  defp criteria_key_validation_result({:ok, _seen}), do: :ok
+  defp criteria_key_validation_result({:error, error}), do: {:error, error}
 
   defp retry_options(client, opts) do
     max_retries = Keyword.get(opts, :max_retries, client.config.max_retries)
