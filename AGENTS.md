@@ -94,9 +94,6 @@ All tests use `Req.Test` plug stubs — no live network calls, no API key needed
 - Don't remove or rename public functions without a major version bump and a
   `@deprecated` annotation first.
 
-## Publishing checklist (for humans)
+## Publishing
 
-1. Update `CHANGELOG.md` — move Unreleased items under a version + date
-2. Bump `@version` in `mix.exs`
-3. `mix hex.publish`
-4. Tag: `git tag v<version> && git push origin v<version>`
+Agents must never run `scripts/release`, `mix hex.publish`, create or push release tags, or create/publish GitHub releases. `PUBLISHING.md` contains the human-maintainer release procedure.

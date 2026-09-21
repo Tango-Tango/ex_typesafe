@@ -35,7 +35,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `nil` descriptions where the API permits them.
 - All JSON-object 2xx HTTP responses are accepted as successful evaluations.
 
-## [0.1.0] - Unreleased
+## [0.1.0] - 2026-09-20
 
 ### Added
 
