@@ -10,7 +10,7 @@
   "packages": [
     "npm:pi-mcp-adapter@2.7.0",
     {
-      "source": "https://github.com/tango-tango/pi-tools.git@8d8740bcffccc0829b9f77556ba883004f47f83e",
+      "source": "https://github.com/tango-tango/pi-tools.git@7d6704e21d07f61e8307343eb0fca21839924276",
       "extensions": [
         "packages/pi-gh/src/index.ts",
         "packages/pi-jira/src/index.ts",
