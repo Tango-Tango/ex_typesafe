@@ -97,6 +97,6 @@ All tests use `Req.Test` plug stubs — no live network calls, no API key needed
 ## Publishing checklist (for humans)
 
 1. Update `CHANGELOG.md` — move Unreleased items under a version + date
-2. Bump `@version` in `mix.exs`
-3. `mix hex.publish`
+2. Bump `@version` in `mix.exs`, then commit the release changes
+3. `scripts/publish` (or `scripts/publish --dry-run` to run the Hex preflight only)
 4. Tag: `git tag v<version> && git push origin v<version>`

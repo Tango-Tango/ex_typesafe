@@ -1,0 +1,43 @@
+#!/usr/bin/env bash
+# Build, validate, and publish ex_typesafe to Hex.
+#
+# Usage:
+#   scripts/publish             # validates, then asks Hex for confirmation
+#   scripts/publish --dry-run   # validates and builds locally without requiring Hex auth
+#   scripts/publish --yes       # validates, then publishes without Hex's confirmation prompt
+set -euo pipefail
+
+case "${1:-}" in
+  "" | --dry-run | --yes) ;;
+  *)
+    echo "Usage: $0 [--dry-run|--yes]" >&2
+    exit 2
+    ;;
+esac
+
+root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$root"
+
+if [[ -n "$(git status --porcelain)" ]]; then
+  echo "Refusing to publish from a dirty working tree." >&2
+  exit 1
+fi
+
+artifact_dir="$(mktemp -d)"
+trap 'rm -rf "$artifact_dir"' EXIT
+
+MIX_ENV=dev mix deps.get
+MIX_ENV=test mix deps.get
+MIX_ENV=dev mix format --check-formatted
+MIX_ENV=dev mix credo --strict
+MIX_ENV=dev mix compile --warnings-as-errors
+MIX_ENV=test mix test
+MIX_ENV=dev mix docs
+MIX_ENV=dev mix hex.build --output "$artifact_dir/ex_typesafe.tar"
+
+if [[ "${1:-}" == "--dry-run" ]]; then
+  echo "Local Hex publishing preflight passed; no package was uploaded."
+  exit 0
+fi
+
+MIX_ENV=dev mix hex.publish "$@"
