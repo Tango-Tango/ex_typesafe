@@ -18,6 +18,8 @@ defmodule ExTypesafe.Response do
       response.scores.frustration.score
   """
 
+  alias ExTypesafe.Response.UnknownAnswer
+
   @typedoc "A question key preserved from the caller's request."
   @type answer_key :: String.t() | atom()
 
@@ -85,22 +87,6 @@ defmodule ExTypesafe.Response do
           }
 
     defstruct type: "score", score: nil, legend: %{}, probabilities: %{}, confidence: nil
-  end
-
-  defmodule UnknownAnswer do
-    @moduledoc """
-    An answer kind introduced by the API after this client version.
-
-    The raw answer is retained instead of raising while parsing the rest of the response. Upgrade
-    the client when first-class support for the answer type becomes available.
-    """
-
-    @type t :: %__MODULE__{
-            type: String.t() | nil,
-            raw: term()
-          }
-
-    defstruct type: nil, raw: %{}
   end
 
   @type answer :: NoulAnswer.t() | ChoiceAnswer.t() | ScoreAnswer.t() | UnknownAnswer.t()
