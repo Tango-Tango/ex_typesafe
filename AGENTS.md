@@ -96,5 +96,4 @@ All tests use `Req.Test` plug stubs — no live network calls, no API key needed
 
 ## Publishing
 
-Agents must never run `scripts/publish`, `mix hex.publish`, or create release tags. `PUBLISHING.md`
-contains the human-maintainer release procedure.
+Agents must never run `scripts/release`, `mix hex.publish`, create or push release tags, or create/publish GitHub releases. `PUBLISHING.md` contains the human-maintainer release procedure.
