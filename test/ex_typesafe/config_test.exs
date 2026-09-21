@@ -1,15 +1,23 @@
 defmodule ExTypesafe.ConfigTest do
-  use ExUnit.Case, async: true
+  use ExUnit.Case, async: false
 
   alias ExTypesafe.Config
 
   describe "new/1" do
-    test "uses provided options" do
-      config = Config.new(api_key: "ts-key", base_url: "http://localhost", model: "jev-test")
+    test "uses provided options without exposing the API key through Inspect" do
+      config =
+        Config.new(
+          api_key: "ts-key",
+          base_url: "http://localhost",
+          model: "jev-test",
+          max_retry_delay_ms: 123
+        )
 
       assert config.api_key == "ts-key"
       assert config.base_url == "http://localhost"
       assert config.model == "jev-test"
+      assert config.max_retry_delay_ms == 123
+      refute inspect(config) =~ "ts-key"
     end
 
     test "defaults to env variables" do
@@ -43,6 +51,7 @@ defmodule ExTypesafe.ConfigTest do
 
       assert config.base_url == "https://api.typesafe.ai"
       assert config.model == "jev-latest"
+      assert config.max_retry_delay_ms == 5_000
     end
 
     test "api_key is nil when neither option nor env var is set" do
@@ -63,10 +72,50 @@ defmodule ExTypesafe.ConfigTest do
       end
     end
 
-    test "returns config when api_key is present" do
-      config = Config.new(api_key: "ts-key")
+    test "returns config when api_key and retry settings are valid" do
+      config = Config.new(api_key: "ts-key", max_retries: 0, max_retry_delay_ms: 0)
 
       assert %Config{} = Config.validate!(config)
+    end
+
+    test "raises without exposing malformed API key values" do
+      config = Config.new(api_key: "ts-secret\ninvalid")
+
+      assert_raise ArgumentError, ~r/non-empty printable string/, fn ->
+        Config.validate!(config)
+      end
+    end
+
+    test "raises for invalid max_retries" do
+      config = Config.new(api_key: "ts-key", max_retries: -1)
+
+      assert_raise ArgumentError, ~r/max_retries must be a non-negative integer/, fn ->
+        Config.validate!(config)
+      end
+    end
+
+    test "raises for invalid retry_delay_ms" do
+      config = Config.new(api_key: "ts-key", retry_delay_ms: -100)
+
+      assert_raise ArgumentError, ~r/retry_delay_ms must be a non-negative integer/, fn ->
+        Config.validate!(config)
+      end
+    end
+
+    test "raises for invalid max_retry_delay_ms" do
+      config = Config.new(api_key: "ts-key", max_retry_delay_ms: -1)
+
+      assert_raise ArgumentError, ~r/max_retry_delay_ms must be a non-negative integer/, fn ->
+        Config.validate!(config)
+      end
+    end
+
+    test "preserves falsy non-integer retry values for validation" do
+      config = Config.new(api_key: "ts-key", max_retries: false)
+
+      assert_raise ArgumentError, ~r/max_retries must be a non-negative integer/, fn ->
+        Config.validate!(config)
+      end
     end
   end
 end

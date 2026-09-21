@@ -8,6 +8,10 @@ defmodule ExTypesafe.Question do
   - `ExTypesafe.Question.Choice` — pick one from a set you define, returns the chosen option + probabilities
   - `ExTypesafe.Question.Score` — rate on a rubric you define, returns a probability-weighted value
 
+  Instructions and criterion descriptions can be strings, structured maps, or lists. This makes
+  it possible to keep a question beside the data it references without interpolating that data
+  into a string.
+
   ## Example
 
       questions = %{
@@ -23,7 +27,14 @@ defmodule ExTypesafe.Question do
       }
   """
 
-  @type instructions :: String.t() | map()
+  @typedoc "A JSON-compatible structured value accepted in question content."
+  @type structured_value :: String.t() | number() | boolean() | nil | map() | list()
+
+  @typedoc "A criterion description, including `nil` for undescribed entries."
+  @type entry :: String.t() | map() | list() | nil
+
+  @typedoc "Question instructions — always required (nil is not accepted)."
+  @type instructions :: String.t() | map() | list()
 
   defmodule Noul do
     @moduledoc """
@@ -39,7 +50,7 @@ defmodule ExTypesafe.Question do
 
     @type t :: %__MODULE__{
             instructions: ExTypesafe.Question.instructions(),
-            criteria: %{optional(true | false) => String.t()} | nil
+            criteria: %{optional(true | false) => ExTypesafe.Question.entry()} | nil
           }
 
     defstruct type: "noul", instructions: nil, criteria: nil
@@ -47,7 +58,7 @@ defmodule ExTypesafe.Question do
     defimpl Jason.Encoder do
       def encode(%{type: type, instructions: instructions, criteria: criteria}, opts) do
         map = %{type: type, instructions: instructions}
-        map = if criteria, do: Map.put(map, :criteria, criteria), else: map
+        map = if is_nil(criteria), do: map, else: Map.put(map, :criteria, criteria)
         Jason.Encode.map(map, opts)
       end
     end
@@ -58,8 +69,8 @@ defmodule ExTypesafe.Question do
     Picks one option from a set you define. Returns the chosen option and the full probability
     distribution across all options.
 
-    `criteria` is a map of option name to a description (or `nil` for no description).
-    Maximum 255 options per Choice question.
+    `criteria` is a map of option name to a description (or `nil` for no description). A
+    description can be a string, map, or list. Choice questions accept at most 255 options.
 
         %ExTypesafe.Question.Choice{
           instructions: "Which team should handle this?",
@@ -73,7 +84,7 @@ defmodule ExTypesafe.Question do
 
     @type t :: %__MODULE__{
             instructions: ExTypesafe.Question.instructions(),
-            criteria: %{required(atom() | String.t()) => String.t() | nil}
+            criteria: %{required(atom() | String.t()) => ExTypesafe.Question.entry()}
           }
 
     @derive Jason.Encoder
@@ -85,7 +96,8 @@ defmodule ExTypesafe.Question do
     Rates the state along a rubric you define. Returns a probability-weighted value across
     your levels.
 
-    `criteria` is an ordered list of level descriptions (2–10 levels).
+    `criteria` is an ordered list of two to ten level descriptions. Each description can be a
+    string, map, list, or `nil`.
 
         %ExTypesafe.Question.Score{
           instructions: "How frustrated is the customer?",
@@ -95,7 +107,7 @@ defmodule ExTypesafe.Question do
 
     @type t :: %__MODULE__{
             instructions: ExTypesafe.Question.instructions(),
-            criteria: [String.t()]
+            criteria: [ExTypesafe.Question.entry()]
           }
 
     @derive Jason.Encoder
@@ -104,11 +116,28 @@ defmodule ExTypesafe.Question do
 
   @type t :: Noul.t() | Choice.t() | Score.t()
 
+  @doc false
+  @spec normalize_container(term()) :: term()
+  # Returns :question_struct for typed question structs, a nil-stripped plain map for others, or input unchanged.
+  def normalize_container(%Noul{}), do: :question_struct
+  def normalize_container(%Choice{}), do: :question_struct
+  def normalize_container(%Score{}), do: :question_struct
+
+  def normalize_container(container) when is_struct(container) do
+    container
+    |> Map.from_struct()
+    |> Enum.reject(fn {_key, value} -> is_nil(value) end)
+    |> Map.new()
+  end
+
+  def normalize_container(container), do: container
+
   @doc """
   Builds a `Noul` question (yes/no).
 
   ## Parameters
-  - `instructions` — The yes/no question to evaluate. Can be a string or a structured map.
+
+  - `instructions` — The yes/no question to evaluate. Can be a string, structured map, or list.
   - `criteria` — Optional map with `:true` and/or `:false` keys describing what each means.
 
   ## Examples
@@ -128,8 +157,10 @@ defmodule ExTypesafe.Question do
   Builds a `Choice` question.
 
   ## Parameters
-  - `instructions` — What the model should decide. Can be a string or a structured map.
-  - `criteria` — Map of option name to rubric description. Use `nil` value for options needing no description.
+
+  - `instructions` — What the model should decide. Can be a string, structured map, or list.
+  - `criteria` — Map of option name to a rubric description. Use `nil` for an option needing no
+    description; descriptions can also be structured maps or lists.
 
   ## Examples
 
@@ -148,15 +179,17 @@ defmodule ExTypesafe.Question do
   Builds a `Score` question.
 
   ## Parameters
-  - `instructions` — What the model should rate. Can be a string or a structured map.
-  - `criteria` — Ordered list of level descriptions (2–10 levels, low to high).
+
+  - `instructions` — What the model should rate. Can be a string, structured map, or list.
+  - `criteria` — Ordered list of two to ten level descriptions, low to high. A level description
+    can be a string, structured map, list, or `nil`.
 
   ## Examples
 
       iex> ExTypesafe.Question.score("How frustrated is the customer?", ["Calm", "Frustrated", "Very angry"])
       %ExTypesafe.Question.Score{type: "score", instructions: "How frustrated is the customer?", criteria: ["Calm", "Frustrated", "Very angry"]}
   """
-  @spec score(instructions(), [String.t()]) :: Score.t()
+  @spec score(instructions(), [entry()]) :: Score.t()
   def score(instructions, criteria) when is_list(criteria) do
     %Score{instructions: instructions, criteria: criteria}
   end
