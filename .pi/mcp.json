@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "auggie": {
+      "command": "auggie",
+      "args": ["--mcp", "--mcp-auto-workspace"],
+      "directTools": true,
+      "lifecycle": "keep-alive"
+    }
+  }
+}
