@@ -1,35 +1,30 @@
+# Use the same pinned, prebuilt Elixir/OTP Ubuntu Noble image as PTT.
+# Erlang/Elixir are supplied by the image; OS-level development tooling is
+# installed explicitly below.
 [base]
-image = "ubuntu:24.04"
+image = "hexpm/elixir:1.19.5-erlang-28.5.0.1-ubuntu-noble-20260410"
 
 [toolchain]
 install = """
 set -eu
+export DEBIAN_FRONTEND=noninteractive
 
-apt-get update
+apt-get update -y
 apt-get install -y --no-install-recommends \
-  wget \
-  gnupg \
-  ca-certificates \
   build-essential \
   git \
   curl \
-  inotify-tools
+  inotify-tools \
+  locales
 
-# Add Erlang Solutions repo (provides OTP + Elixir)
-wget -qO- https://packages.erlang-solutions.com/ubuntu/erlang_solutions.asc \
-  | gpg --dearmor > /usr/share/keyrings/erlang-solutions-archive-keyring.gpg
+locale-gen en_US.UTF-8
+update-locale LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8
 
-echo "deb [signed-by=/usr/share/keyrings/erlang-solutions-archive-keyring.gpg] \
-  https://packages.erlang-solutions.com/ubuntu noble contrib" \
-  | tee /etc/apt/sources.list.d/erlang-solutions.list
-
-apt-get update
-apt-get install -y --no-install-recommends esl-erlang elixir
-
-# Install hex and rebar
+# Bootstrap Elixir package manager and build tool.
 mix local.hex --force
 mix local.rebar --force
 
+apt-get clean
 rm -rf /var/lib/apt/lists/*
 """
 
@@ -40,3 +35,4 @@ cmd = "mix deps.get"
 MIX_ENV = "dev"
 TERM = "xterm-256color"
 LANG = "en_US.UTF-8"
+PATH = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
