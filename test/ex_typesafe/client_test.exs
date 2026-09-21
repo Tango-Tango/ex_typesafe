@@ -439,6 +439,40 @@ defmodule ExTypesafe.ClientTest do
       assert score_message =~ "Score question :q criteria must be a list"
     end
 
+    test "rejects nil instructions on typed question structs" do
+      for {label, question} <- [
+            {:noul, %Question.Noul{criteria: %{true: "yes"}}},
+            {:choice, %Question.Choice{criteria: %{a: "A", b: "B"}}},
+            {:score, %Question.Score{criteria: ["Low", "High"]}}
+          ] do
+        assert {:error, %Error{status: :validation, message: message}} =
+                 Client.evaluate(test_client(), "hello", %{q: question})
+
+        assert message =~ "instructions must not be nil",
+               "expected nil-instructions rejection for #{label}, got: #{message}"
+      end
+    end
+
+    test "rejects Noul criteria with colliding serialized keys" do
+      question =
+        Question.noul("Is this true?", %{true => "affirmative", "true" => "also affirmative"})
+
+      assert {:error, %Error{status: :validation, message: message}} =
+               Client.evaluate(test_client(), "hello", %{q: question})
+
+      assert message =~ "criteria keys must not collide"
+    end
+
+    test "rejects Choice criteria with colliding serialized keys" do
+      question =
+        Question.choice("Pick one", %{:billing => "Payments", "billing" => "Also payments"})
+
+      assert {:error, %Error{status: :validation, message: message}} =
+               Client.evaluate(test_client(), "hello", %{q: question})
+
+      assert message =~ "criteria keys must not collide"
+    end
+
     test "rejects empty and oversized Choice criteria" do
       assert {:error, %Error{status: :validation, message: empty_message}} =
                Client.evaluate(test_client(), "hello", %{
@@ -500,7 +534,7 @@ defmodule ExTypesafe.ClientTest do
                  q: Question.noul("test?", %{{:tuple, :key} => "not JSON-encodable"})
                })
 
-      assert criteria_message =~ "request body must be JSON-encodable"
+      assert criteria_message =~ "criteria keys must be atoms or strings"
     end
   end
 

@@ -30,11 +30,11 @@ defmodule ExTypesafe.Question do
   @typedoc "A JSON-compatible structured value accepted in question content."
   @type structured_value :: String.t() | number() | boolean() | nil | map() | list()
 
-  @typedoc "Question instructions or a criterion description."
+  @typedoc "A criterion description, including `nil` for undescribed entries."
   @type entry :: String.t() | map() | list() | nil
 
-  @typedoc "Backward-compatible alias for `entry/0`."
-  @type instructions :: entry()
+  @typedoc "Question instructions — always required (nil is not accepted)."
+  @type instructions :: String.t() | map() | list()
 
   defmodule Noul do
     @moduledoc """
@@ -49,7 +49,7 @@ defmodule ExTypesafe.Question do
     """
 
     @type t :: %__MODULE__{
-            instructions: ExTypesafe.Question.entry(),
+            instructions: ExTypesafe.Question.instructions(),
             criteria: %{optional(true | false) => ExTypesafe.Question.entry()} | nil
           }
 
@@ -83,7 +83,7 @@ defmodule ExTypesafe.Question do
     """
 
     @type t :: %__MODULE__{
-            instructions: ExTypesafe.Question.entry(),
+            instructions: ExTypesafe.Question.instructions(),
             criteria: %{required(atom() | String.t()) => ExTypesafe.Question.entry()}
           }
 
@@ -106,7 +106,7 @@ defmodule ExTypesafe.Question do
     """
 
     @type t :: %__MODULE__{
-            instructions: ExTypesafe.Question.entry(),
+            instructions: ExTypesafe.Question.instructions(),
             criteria: [ExTypesafe.Question.entry()]
           }
 
@@ -148,7 +148,7 @@ defmodule ExTypesafe.Question do
       iex> ExTypesafe.Question.noul("Is this spam?", %{true: "Clearly promotional", false: "Legitimate message"})
       %ExTypesafe.Question.Noul{type: "noul", instructions: "Is this spam?", criteria: %{true: "Clearly promotional", false: "Legitimate message"}}
   """
-  @spec noul(entry(), map() | nil) :: Noul.t()
+  @spec noul(instructions(), map() | nil) :: Noul.t()
   def noul(instructions, criteria \\ nil) do
     %Noul{instructions: instructions, criteria: criteria}
   end
@@ -170,7 +170,7 @@ defmodule ExTypesafe.Question do
       ...> })
       %ExTypesafe.Question.Choice{type: "choice", instructions: "Which team should handle this?", criteria: %{billing: "Payments, invoicing, refunds", technical: "Bugs, outages, integrations"}}
   """
-  @spec choice(entry(), map()) :: Choice.t()
+  @spec choice(instructions(), map()) :: Choice.t()
   def choice(instructions, criteria) do
     %Choice{instructions: instructions, criteria: criteria}
   end
@@ -189,7 +189,7 @@ defmodule ExTypesafe.Question do
       iex> ExTypesafe.Question.score("How frustrated is the customer?", ["Calm", "Frustrated", "Very angry"])
       %ExTypesafe.Question.Score{type: "score", instructions: "How frustrated is the customer?", criteria: ["Calm", "Frustrated", "Very angry"]}
   """
-  @spec score(entry(), [entry()]) :: Score.t()
+  @spec score(instructions(), [entry()]) :: Score.t()
   def score(instructions, criteria) when is_list(criteria) do
     %Score{instructions: instructions, criteria: criteria}
   end

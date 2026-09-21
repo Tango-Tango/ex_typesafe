@@ -307,6 +307,11 @@ defmodule ExTypesafe.Client do
     end)
   end
 
+  defp validate_question(%{instructions: nil} = question, key)
+       when is_struct(question, Question.Noul) or is_struct(question, Question.Choice) or
+              is_struct(question, Question.Score),
+       do: nil_instructions_error(key)
+
   defp validate_question(%Question.Noul{criteria: criteria}, key),
     do: validate_noul(criteria, key)
 
@@ -329,7 +334,9 @@ defmodule ExTypesafe.Client do
   end
 
   defp validate_noul(nil, _key), do: :ok
-  defp validate_noul(criteria, _key) when is_map(criteria), do: :ok
+
+  defp validate_noul(criteria, key) when is_map(criteria),
+    do: validate_criteria_keys(criteria, key)
 
   defp validate_noul(_criteria, key) do
     {:error,
@@ -348,7 +355,8 @@ defmodule ExTypesafe.Client do
      )}
   end
 
-  defp validate_choice(criteria, _key) when is_map(criteria), do: :ok
+  defp validate_choice(criteria, key) when is_map(criteria),
+    do: validate_criteria_keys(criteria, key)
 
   defp validate_choice(_criteria, key) do
     {:error, Error.validation_error("Choice question #{inspect(key)} criteria must be a map")}
@@ -373,6 +381,39 @@ defmodule ExTypesafe.Client do
   end
 
   defp validate_score(_criteria, _key), do: :ok
+
+  defp nil_instructions_error(key) do
+    {:error, Error.validation_error("question #{inspect(key)} instructions must not be nil")}
+  end
+
+  defp validate_criteria_keys(criteria, question_key) do
+    criteria
+    |> Enum.reduce_while({:ok, MapSet.new()}, fn {key, _value}, {:ok, seen} ->
+      case wire_key(key) do
+        {:ok, encoded} ->
+          if MapSet.member?(seen, encoded) do
+            {:halt,
+             {:error,
+              Error.validation_error(
+                "question #{inspect(question_key)} criteria keys must not collide after JSON encoding: #{inspect(encoded)}"
+              )}}
+          else
+            {:cont, {:ok, MapSet.put(seen, encoded)}}
+          end
+
+        {:error, _} ->
+          {:halt,
+           {:error,
+            Error.validation_error(
+              "question #{inspect(question_key)} criteria keys must be atoms or strings, got: #{inspect(key)}"
+            )}}
+      end
+    end)
+    |> case do
+      {:ok, _seen} -> :ok
+      {:error, error} -> {:error, error}
+    end
+  end
 
   defp retry_options(client, opts) do
     max_retries = Keyword.get(opts, :max_retries, client.config.max_retries)
