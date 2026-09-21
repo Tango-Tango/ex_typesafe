@@ -4,6 +4,7 @@ defmodule ExTypesafe.ResponseTest do
   alias ExTypesafe.Question
   alias ExTypesafe.Response
   alias ExTypesafe.Response.{ChoiceAnswer, NoulAnswer, ScoreAnswer, UnknownAnswer, Usage}
+  alias ExTypesafe.TestSupport.QuestionContainer
 
   @noul_response %{
     "model" => "jev-1.13.0",
@@ -129,6 +130,23 @@ defmodule ExTypesafe.ResponseTest do
       refute Map.has_key?(response.answers, "is_urgent")
     end
 
+    test "restores atom keys from a caller-defined question container" do
+      questions = %QuestionContainer{is_urgent: Question.noul("Is this urgent?")}
+      response = Response.from_map(@noul_response, questions)
+
+      assert %NoulAnswer{noul: 0.95} = response.answers.is_urgent
+      refute Map.has_key?(response.answers, "is_urgent")
+      refute Map.has_key?(response.answers, :__struct__)
+    end
+
+    test "ignores nil fields in caller-defined question containers" do
+      questions = %QuestionContainer{is_urgent: Question.noul("Is this urgent?"), department: nil}
+      response = Response.from_map(@noul_response, questions)
+
+      assert %NoulAnswer{noul: 0.95} = response.answers.is_urgent
+      refute Map.has_key?(response.answers, :department)
+    end
+
     test "preserves string question keys" do
       questions = %{"is_urgent" => Question.noul("Is this urgent?")}
       response = Response.from_map(@noul_response, questions)
@@ -136,10 +154,17 @@ defmodule ExTypesafe.ResponseTest do
       assert %NoulAnswer{noul: 0.95} = response.answers["is_urgent"]
     end
 
-    test "falls back to server string keys for invalid question maps without raising" do
+    test "falls back to server string keys for non-map question input without raising" do
+      response = Response.from_map(@noul_response, [])
+
+      assert %NoulAnswer{noul: 0.95} = response.answers["is_urgent"]
+    end
+
+    test "falls back to server string keys when handed a typed question struct" do
       response = Response.from_map(@noul_response, Question.noul("Is this urgent?"))
 
       assert %NoulAnswer{noul: 0.95} = response.answers["is_urgent"]
+      refute Map.has_key?(response.answers, :is_urgent)
     end
   end
 
@@ -147,6 +172,13 @@ defmodule ExTypesafe.ResponseTest do
     test "stores a TypeSafe request ID" do
       response = Response.from_map(@noul_response, %{}, "req_123")
 
+      assert response.request_id == "req_123"
+    end
+
+    test "falls back to server string keys for non-map question input and keeps the request id" do
+      response = Response.from_map(@noul_response, [], "req_123")
+
+      assert %NoulAnswer{noul: 0.95} = response.answers["is_urgent"]
       assert response.request_id == "req_123"
     end
   end

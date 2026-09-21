@@ -24,9 +24,17 @@ lib/
   ex_typesafe.ex              # Public entry point — system_one/4
   ex_typesafe/
     client.ex                 # Req-based HTTP client, retry logic
+    client/
+      request_context.ex      # Request retry state
     config.ex                 # Option resolution + env var fallbacks
     question.ex               # Noul, Choice, Score structs + helpers
-    response.ex               # Response, answer, and usage structs
+    response.ex               # Response struct and parsing
+    response/
+      choice_answer.ex        # Choice answer struct
+      noul_answer.ex          # Noul answer struct
+      score_answer.ex         # Score answer struct
+      unknown_answer.ex       # Unknown answer struct
+      usage.ex                # Token usage struct
     error.ex                  # Error struct
 test/
   ex_typesafe_test.exs

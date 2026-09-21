@@ -14,6 +14,7 @@ defmodule ExTypesafe.Client do
   The client is a plain struct — it's safe to create once and reuse across requests.
   """
 
+  alias ExTypesafe.Client.RequestContext
   alias ExTypesafe.Config
   alias ExTypesafe.Error
   alias ExTypesafe.Question
@@ -68,7 +69,6 @@ defmodule ExTypesafe.Client do
           {"content-type", "application/json"},
           {"accept", "application/json"}
         ],
-        json: nil,
         retry: false
       ]
       |> add_plug(plug)
@@ -89,8 +89,12 @@ defmodule ExTypesafe.Client do
 
   - `client` — A client built with `new/1`.
   - `state` — The content to evaluate: a string, map, or list.
-  - `questions` — A non-empty map of string/atom keys to question structs or raw question maps.
-    Response answer keys retain the same atom or string form supplied here.
+  - `questions` — A non-empty map, or caller-defined struct, of string/atom keys to question
+    structs or raw question maps. Struct containers are normalized without their `__struct__`
+    field and omit `nil` fields. A single `Question.Noul`, `Question.Choice`, or `Question.Score`
+    is intentionally rejected: define a purpose-built container struct whose fields hold valid
+    question values instead. Raw question maps remain forward-compatible. Response answer keys
+    retain the same atom or string form supplied here.
   - `opts` — Optional keyword list:
     - `:model` — Override the client's default model.
     - `:extra_body` — Map of additional API request fields. Core `state`, `model`, and `questions`
@@ -103,60 +107,61 @@ defmodule ExTypesafe.Client do
           {:ok, Response.t()} | {:error, Error.t()}
   def evaluate(client, state, questions, opts \\ [])
 
-  def evaluate(%__MODULE__{} = client, state, questions, opts)
-      when is_map(questions) and not is_struct(questions) and is_list(opts) do
-    evaluate_with_options(client, state, questions, opts, Keyword.keyword?(opts))
-  end
-
-  def evaluate(%__MODULE__{}, _state, questions, _opts)
-      when not is_map(questions) or is_struct(questions) do
-    {:error, Error.validation_error("questions must be a non-struct map")}
+  def evaluate(%__MODULE__{} = client, state, questions, opts) when is_map(questions) do
+    evaluate_with_options(client, state, Question.normalize_container(questions), opts)
   end
 
   def evaluate(%__MODULE__{}, _state, _questions, _opts) do
-    {:error, Error.validation_error("options must be a keyword list")}
+    {:error, Error.validation_error("questions must be a map or struct")}
   end
 
-  defp evaluate_with_options(_client, _state, _questions, _opts, false) do
-    {:error, Error.validation_error("options must be a keyword list")}
+  defp evaluate_with_options(client, state, questions, opts) when is_list(opts) do
+    evaluate_keyword_options(Keyword.keyword?(opts), client, state, questions, opts)
   end
 
-  defp evaluate_with_options(client, state, questions, opts, true) do
-    with :ok <- validate_questions(questions),
-         {:ok, extra_body} <- extra_body(opts),
-         {:ok, max_retries, retry_delay_ms, max_retry_delay_ms} <- retry_options(client, opts) do
-      model = opts[:model] || client.config.model
+  defp evaluate_with_options(_client, _state, _questions, _opts),
+    do: {:error, Error.validation_error("options must be a keyword list")}
 
-      body = build_request_body(extra_body, state, model, questions)
+  defp evaluate_keyword_options(false, _client, _state, _questions, _opts),
+    do: {:error, Error.validation_error("options must be a keyword list")}
 
-      validate_json_body(body)
-      |> execute_request(client, body, questions, max_retries, retry_delay_ms, max_retry_delay_ms)
+  defp evaluate_keyword_options(true, client, state, questions, opts) do
+    model = opts[:model] || client.config.model
+    extra_body = Keyword.get(opts, :extra_body, %{})
+
+    with {:ok, questions} <- validate_question_container(questions),
+         :ok <- validate_questions(questions) do
+      evaluate_with_extra_body(extra_body, client, state, model, questions, opts)
     end
   end
 
-  defp execute_request(
-         :ok,
-         client,
-         body,
-         questions,
-         max_retries,
-         retry_delay_ms,
-         max_retry_delay_ms
-       ) do
-    do_request(client, body, questions, max_retries, retry_delay_ms, max_retry_delay_ms)
+  # Unlike question containers, extra_body is an API-field map and never accepts structs.
+  defp evaluate_with_extra_body(extra_body, client, state, model, questions, opts)
+       when is_map(extra_body) and not is_struct(extra_body) do
+    body = build_request_body(extra_body, state, model, questions)
+
+    with {:ok, max_retries, retry_delay_ms, max_retry_delay_ms} <- retry_options(client, opts),
+         {:ok, body} <- encode_request_body(body) do
+      do_request(%RequestContext{
+        client: client,
+        body: body,
+        questions: questions,
+        retries_left: max_retries,
+        delay_ms: retry_delay_ms,
+        max_delay_ms: max_retry_delay_ms
+      })
+    end
   end
 
-  defp execute_request(
-         {:error, %Error{} = error},
-         _client,
-         _body,
-         _questions,
-         _max_retries,
-         _retry_delay_ms,
-         _max_retry_delay_ms
-       ) do
-    {:error, error}
+  defp evaluate_with_extra_body(_extra_body, _client, _state, _model, _questions, _opts),
+    do: {:error, Error.validation_error("extra_body must be a non-struct map")}
+
+  defp validate_question_container(:question_struct) do
+    {:error,
+     Error.validation_error("questions must be a container map or struct, not a question struct")}
   end
+
+  defp validate_question_container(questions) when is_map(questions), do: {:ok, questions}
 
   defp build_request_body(extra_body, state, model, questions) do
     extra_body
@@ -164,9 +169,9 @@ defmodule ExTypesafe.Client do
     |> Map.merge(%{state: state, model: model, questions: questions})
   end
 
-  defp validate_json_body(body) do
+  defp encode_request_body(body) do
     case Jason.encode(body) do
-      {:ok, _json} -> :ok
+      {:ok, json} -> {:ok, json}
       {:error, _reason} -> {:error, Error.validation_error("request body must be JSON-encodable")}
     end
   rescue
@@ -175,183 +180,71 @@ defmodule ExTypesafe.Client do
 
   # --- Request and retry handling ---
 
-  defp do_request(client, body, questions, retries_left, delay_ms, max_delay_ms) do
-    result =
-      Req.post(client.req,
-        url: "/v1/systemone",
-        json: body
-      )
-
-    handle_request_result(result, client, body, questions, retries_left, delay_ms, max_delay_ms)
+  defp do_request(%RequestContext{} = request) do
+    request.client.req
+    |> Req.post(url: "/v1/systemone", body: request.body)
+    |> handle_request_result(request)
   end
 
-  defp handle_request_result(
-         {:ok, response},
-         client,
-         body,
-         questions,
-         retries_left,
-         delay_ms,
-         max_delay_ms
-       ) do
-    handle_response(response, client, body, questions, retries_left, delay_ms, max_delay_ms)
-  end
+  defp handle_request_result({:ok, response}, request), do: handle_response(response, request)
 
-  defp handle_request_result(
-         {:error, %Req.TransportError{} = exception},
-         client,
-         body,
-         questions,
-         retries_left,
-         delay_ms,
-         max_delay_ms
-       ) do
-    retry_transport_or_error(
-      client,
-      body,
-      questions,
-      exception,
-      retries_left,
-      delay_ms,
-      max_delay_ms
-    )
-  end
+  defp handle_request_result({:error, %Req.TransportError{} = exception}, request),
+    do: retry_transport_or_error(request, exception)
 
-  defp handle_request_result(
-         {:error, exception},
-         _client,
-         _body,
-         _questions,
-         _retries_left,
-         _delay_ms,
-         _max_delay_ms
-       ) do
-    {:error, Error.transport_error(exception)}
-  end
+  defp handle_request_result({:error, exception}, _request),
+    do: {:error, Error.transport_error(exception)}
 
-  defp handle_response(
-         %Req.Response{status: status, body: response_body} = response,
-         _client,
-         _body,
-         questions,
-         _retries_left,
-         _delay_ms,
-         _max_delay_ms
-       )
-       when status >= 200 and status < 300 and is_map(response_body) do
-    parse_success_response(response, response_body, questions)
-  end
+  defp handle_response(%Req.Response{status: status, body: body} = response, request)
+       when status >= 200 and status < 300 and is_map(body),
+       do: parse_success_response(response, body, request.questions)
 
-  defp handle_response(
-         %Req.Response{status: status} = response,
-         _client,
-         _body,
-         _questions,
-         _retries_left,
-         _delay_ms,
-         _max_delay_ms
-       )
-       when status >= 200 and status < 300 do
-    {:error, Error.invalid_response(response, "Expected a JSON object response body")}
-  end
+  defp handle_response(%Req.Response{status: status} = response, _request)
+       when status >= 200 and status < 300,
+       do: {:error, Error.invalid_response(response, "Expected a JSON object response body")}
 
-  defp handle_response(
-         %Req.Response{status: status} = response,
-         client,
-         body,
-         questions,
-         retries_left,
-         delay_ms,
-         max_delay_ms
-       )
-       when status in @retryable_statuses do
-    retry_or_error(client, body, questions, response, retries_left, delay_ms, max_delay_ms)
-  end
+  defp handle_response(%Req.Response{status: status} = response, request)
+       when status in @retryable_statuses,
+       do: retry_or_error(request, response)
 
-  defp handle_response(
-         response,
-         _client,
-         _body,
-         _questions,
-         _retries_left,
-         _delay_ms,
-         _max_delay_ms
-       ) do
-    {:error, Error.from_response(response)}
-  end
+  defp handle_response(response, _request), do: {:error, Error.from_response(response)}
 
-  defp parse_success_response(response, %{"answers" => answers} = response_body, questions)
-       when is_map(answers) do
-    {:ok, Response.from_map(response_body, questions, Error.request_id_from_response(response))}
-  end
+  defp parse_success_response(response, %{"answers" => answers} = body, questions)
+       when is_map(answers),
+       do: {:ok, Response.from_map(body, questions, Error.request_id_from_response(response))}
 
-  defp parse_success_response(response, %{"answers" => _answers}, _questions) do
-    {:error, Error.invalid_response(response, "Expected the response answers field to be a map")}
-  end
+  defp parse_success_response(response, %{"answers" => _answers}, _questions),
+    do:
+      {:error,
+       Error.invalid_response(response, "Expected the response answers field to be a map")}
 
-  defp parse_success_response(response, _response_body, _questions) do
-    {:error,
-     Error.invalid_response(response, "Expected the response body to include an answers map")}
-  end
+  defp parse_success_response(response, _body, _questions),
+    do:
+      {:error,
+       Error.invalid_response(response, "Expected the response body to include an answers map")}
 
-  defp retry_or_error(client, body, questions, response, retries_left, delay_ms, max_delay_ms)
+  defp retry_or_error(%RequestContext{retries_left: retries_left} = request, response)
        when retries_left > 0 do
-    Process.sleep(retry_delay(response, delay_ms, max_delay_ms))
-
-    do_request(
-      client,
-      body,
-      questions,
-      retries_left - 1,
-      next_retry_delay(delay_ms, max_delay_ms),
-      max_delay_ms
-    )
+    Process.sleep(retry_delay(response, request.delay_ms, request.max_delay_ms))
+    do_request(next_request(request))
   end
 
-  defp retry_or_error(
-         _client,
-         _body,
-         _questions,
-         response,
-         _retries_left,
-         _delay_ms,
-         _max_delay_ms
-       ) do
-    {:error, Error.from_response(response)}
-  end
+  defp retry_or_error(_request, response), do: {:error, Error.from_response(response)}
 
-  defp retry_transport_or_error(
-         client,
-         body,
-         questions,
-         _exception,
-         retries_left,
-         delay_ms,
-         max_delay_ms
-       )
+  defp retry_transport_or_error(%RequestContext{retries_left: retries_left} = request, _exception)
        when retries_left > 0 do
-    Process.sleep(min(delay_ms, max_delay_ms))
-
-    do_request(
-      client,
-      body,
-      questions,
-      retries_left - 1,
-      next_retry_delay(delay_ms, max_delay_ms),
-      max_delay_ms
-    )
+    Process.sleep(min(request.delay_ms, request.max_delay_ms))
+    do_request(next_request(request))
   end
 
-  defp retry_transport_or_error(
-         _client,
-         _body,
-         _questions,
-         exception,
-         _retries_left,
-         _delay_ms,
-         _max_delay_ms
-       ) do
-    {:error, Error.transport_error(exception)}
+  defp retry_transport_or_error(_request, exception),
+    do: {:error, Error.transport_error(exception)}
+
+  defp next_request(request) do
+    %{
+      request
+      | retries_left: request.retries_left - 1,
+        delay_ms: next_retry_delay(request.delay_ms, request.max_delay_ms)
+    }
   end
 
   # --- Local request validation ---
@@ -480,13 +373,6 @@ defmodule ExTypesafe.Client do
   end
 
   defp validate_score(_criteria, _key), do: :ok
-
-  defp extra_body(opts) do
-    case Keyword.get(opts, :extra_body, %{}) do
-      extra_body when is_map(extra_body) and not is_struct(extra_body) -> {:ok, extra_body}
-      _extra_body -> {:error, Error.validation_error("extra_body must be a non-struct map")}
-    end
-  end
 
   defp retry_options(client, opts) do
     max_retries = Keyword.get(opts, :max_retries, client.config.max_retries)

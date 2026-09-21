@@ -6,6 +6,7 @@ defmodule ExTypesafe.ClientTest do
   alias ExTypesafe.Question
   alias ExTypesafe.Response
   alias ExTypesafe.Response.UnknownAnswer
+  alias ExTypesafe.TestSupport.QuestionContainer
 
   defp test_client(opts \\ []) do
     Client.new(
@@ -104,6 +105,48 @@ defmodule ExTypesafe.ClientTest do
       assert response.request_id == "req_123"
     end
 
+    test "normalizes a caller-defined question container without serializing __struct__" do
+      Req.Test.stub(__MODULE__, fn conn ->
+        {:ok, body, conn} = Plug.Conn.read_body(conn)
+        parsed = Jason.decode!(body)
+
+        assert parsed["questions"] == %{
+                 "is_urgent" => %{"type" => "noul", "instructions" => "Urgent?"}
+               }
+
+        refute Map.has_key?(parsed["questions"], "__struct__")
+
+        send_json(conn, 200, success_body(%{"is_urgent" => %{"type" => "noul", "noul" => 0.95}}))
+      end)
+
+      questions = %QuestionContainer{is_urgent: Question.noul("Urgent?")}
+
+      assert {:ok, response} = Client.evaluate(test_client(), "My account is broken!", questions)
+      assert response.answers.is_urgent.noul == 0.95
+      refute Map.has_key?(response.answers, "is_urgent")
+    end
+
+    test "omits nil fields from a caller-defined question container" do
+      Req.Test.stub(__MODULE__, fn conn ->
+        {:ok, body, conn} = Plug.Conn.read_body(conn)
+        parsed = Jason.decode!(body)
+
+        assert parsed["questions"] == %{
+                 "is_urgent" => %{"type" => "noul", "instructions" => "Urgent?"}
+               }
+
+        refute Map.has_key?(parsed["questions"], "department")
+        refute Map.has_key?(parsed["questions"], "__struct__")
+
+        send_json(conn, 200, success_body(%{"is_urgent" => %{"type" => "noul", "noul" => 0.95}}))
+      end)
+
+      questions = %QuestionContainer{is_urgent: Question.noul("Urgent?"), department: nil}
+
+      assert {:ok, response} = Client.evaluate(test_client(), "My account is broken!", questions)
+      assert response.answers.is_urgent.noul == 0.95
+    end
+
     test "preserves string question keys" do
       stub_success(success_body(%{"is_urgent" => %{"type" => "noul", "noul" => 0.95}}))
 
@@ -124,6 +167,7 @@ defmodule ExTypesafe.ClientTest do
 
         assert conn.request_path == "/v1/systemone"
         assert Plug.Conn.get_req_header(conn, "authorization") == ["Bearer ts-test-key"]
+        assert Plug.Conn.get_req_header(conn, "content-type") == ["application/json"]
         assert parsed["state"] == %{"document" => "hello"}
         assert parsed["model"] == "jev-latest"
 
@@ -300,19 +344,24 @@ defmodule ExTypesafe.ClientTest do
   end
 
   describe "evaluate/4 — local validation" do
-    test "rejects empty question maps before a request is made" do
+    test "rejects empty question maps and all-nil struct containers before a request is made" do
       assert {:error, %Error{status: :validation, message: message}} =
                Client.evaluate(test_client(), "hello", %{})
 
       assert message =~ "at least one question"
+
+      assert {:error, %Error{status: :validation, message: ^message}} =
+               Client.evaluate(test_client(), "hello", %QuestionContainer{})
     end
 
-    test "rejects non-map or struct question containers, invalid keys, and invalid question values" do
-      assert {:error, %Error{status: :validation, message: "questions must be a non-struct map"}} =
+    test "rejects non-map and typed question containers, invalid keys, and invalid question values" do
+      assert {:error, %Error{status: :validation, message: "questions must be a map or struct"}} =
+               Client.evaluate(test_client(), "hello", [])
+
+      assert {:error, %Error{status: :validation, message: typed_container_message}} =
                Client.evaluate(test_client(), "hello", Question.noul("test?"))
 
-      assert {:error, %Error{status: :validation, message: "questions must be a non-struct map"}} =
-               Client.evaluate(test_client(), "hello", [])
+      assert typed_container_message =~ "container map or struct, not a question struct"
 
       assert {:error, %Error{status: :validation, message: key_message}} =
                Client.evaluate(test_client(), "hello", %{1 => Question.noul("test?")})
@@ -328,6 +377,13 @@ defmodule ExTypesafe.ClientTest do
                Client.evaluate(test_client(), "hello", %{q: %Response.NoulAnswer{}})
 
       assert struct_message =~ "must be a question struct or raw map"
+    end
+
+    test "rejects a non-question struct container at the question-value level" do
+      assert {:error, %Error{status: :validation, message: message}} =
+               Client.evaluate(test_client(), "hello", %Response.NoulAnswer{noul: 0.5})
+
+      assert message =~ "must be a question struct or raw map"
     end
 
     test "rejects atom and string keys that serialize to the same API key" do
@@ -438,6 +494,13 @@ defmodule ExTypesafe.ClientTest do
                Client.evaluate(test_client(), "hello", questions, extra_body: %{future: self()})
 
       assert extra_body_message =~ "request body must be JSON-encodable"
+
+      assert {:error, %Error{status: :validation, message: criteria_message}} =
+               Client.evaluate(test_client(), "hello", %{
+                 q: Question.noul("test?", %{{:tuple, :key} => "not JSON-encodable"})
+               })
+
+      assert criteria_message =~ "request body must be JSON-encodable"
     end
   end
 

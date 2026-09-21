@@ -97,7 +97,22 @@ case ExTypesafe.system_one(client, state, questions) do
 end
 ```
 
-### Response keys and typed answer maps
+### Question-container structs and response keys
+
+Alongside a map, `questions` can be a caller-defined struct. Its non-`nil` fields are treated as
+questions; optional `nil` fields are omitted from the request. The struct marker is never sent to
+the API, and atom field names are restored on the response. A single typed
+`Question.Noul`, `Question.Choice`, or `Question.Score` is intentionally rejected as a container;
+define a purpose-built struct whose fields contain valid question values instead. Raw question
+maps remain forward-compatible:
+
+```elixir
+defmodule TicketQuestions do
+  defstruct [:is_urgent, :department]
+end
+
+questions = %TicketQuestions{is_urgent: ExTypesafe.Question.noul("Urgent?"), department: nil}
+```
 
 Answer keys retain the same form used in the question map:
 
@@ -164,8 +179,9 @@ adds a first-class helper:
 ```
 
 The client always controls `state`, `model`, and `questions`; atom- and string-keyed values for
-those fields in `:extra_body` are ignored. Raw question maps pass through without the typed helper
-validation, so use them deliberately when targeting a newer API feature.
+those fields in `:extra_body` are ignored. Unlike question containers, `:extra_body` must be a
+plain map (structs are rejected intentionally). Raw question maps pass through without the typed
+helper validation, so use them deliberately when targeting a newer API feature.
 
 ### Per-request model and retry overrides
 

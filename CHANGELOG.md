@@ -16,6 +16,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `request_id` on successful responses and API errors when TypeSafe sends
   `x-typesafe-request-id`.
 - Raw question maps and `:extra_body` for forward-compatible API fields.
+- Caller-defined structs as question containers; non-`nil` fields are encoded as questions
+  without serializing `__struct__`, optional `nil` fields are omitted, and atom response keys are
+  restored.
 - Graceful `UnknownAnswer` parsing for answer kinds introduced after this SDK version.
 - Per-request `:max_retries`, `:retry_delay_ms`, and `:max_retry_delay_ms` overrides.
 - Capped exponential retry backoff, support for numeric `Retry-After` / `retry-after-ms`, and

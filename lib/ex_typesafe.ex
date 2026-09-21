@@ -75,8 +75,8 @@ defmodule ExTypesafe do
   @typedoc "A typed question struct or raw question map for forward-compatible API fields."
   @type question :: ExTypesafe.Question.t() | map()
 
-  @typedoc "A non-empty map of atom or string question keys to questions."
-  @type questions :: %{(String.t() | atom()) => question()}
+  @typedoc "A non-empty map or caller-defined struct of atom or string question keys to questions."
+  @type questions :: %{(String.t() | atom()) => question()} | struct()
 
   @doc """
   Evaluates typed questions against a state using the TypeSafe `systemone` endpoint.
@@ -92,8 +92,9 @@ defmodule ExTypesafe do
   - `client` — A client built with `ExTypesafe.Client.new/1`.
   - `state` — The content to evaluate: a plain string for text, or a map/list for structured data
     (e.g. chat logs, records, application state).
-  - `questions` — A non-empty map of arbitrary atom or string keys to question structs or raw
-    question maps. Answers are returned under the same key form.
+  - `questions` — A non-empty map or caller-defined struct of arbitrary atom or string keys to
+    question structs or raw question maps. Struct containers are normalized without their
+    `__struct__` field and omit `nil` fields, and answers are returned under the same key form.
   - `opts` — Optional keyword list:
     - `:model` — Override the client's default model for this request.
     - `:extra_body` — Map of forward-compatible request fields. Core request fields take

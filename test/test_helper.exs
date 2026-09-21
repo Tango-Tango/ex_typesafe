@@ -18,4 +18,10 @@ defmodule ExTypesafe.TestPermanentErrorAdapter do
   end
 end
 
+defmodule ExTypesafe.TestSupport.QuestionContainer do
+  @moduledoc false
+
+  defstruct [:is_urgent, :department]
+end
+
 ExUnit.start()

@@ -18,76 +18,15 @@ defmodule ExTypesafe.Response do
       response.scores.frustration.score
   """
 
+  alias ExTypesafe.Question
+  alias ExTypesafe.Response.ChoiceAnswer
+  alias ExTypesafe.Response.NoulAnswer
+  alias ExTypesafe.Response.ScoreAnswer
   alias ExTypesafe.Response.UnknownAnswer
+  alias ExTypesafe.Response.Usage
 
   @typedoc "A question key preserved from the caller's request."
   @type answer_key :: String.t() | atom()
-
-  defmodule Usage do
-    @moduledoc "Token usage for a TypeSafe API request."
-
-    @type t :: %__MODULE__{
-            input_tokens: non_neg_integer(),
-            output_tokens: non_neg_integer()
-          }
-
-    defstruct input_tokens: 0, output_tokens: 0
-  end
-
-  defmodule NoulAnswer do
-    @moduledoc """
-    Answer to a `Noul` (yes/no) question.
-
-    `noul` is the probability the answer is yes, on a scale of 0.0 (no) to 1.0 (yes).
-    """
-
-    @type t :: %__MODULE__{
-            type: String.t(),
-            noul: number() | nil
-          }
-
-    defstruct type: "noul", noul: nil
-  end
-
-  defmodule ChoiceAnswer do
-    @moduledoc """
-    Answer to a `Choice` question.
-
-    - `choice` — the highest-probability option
-    - `probabilities` — every option mapped to its probability (floats summing to 1)
-    - `confidence` — how certain the model is (0.0–1.0)
-    """
-
-    @type t :: %__MODULE__{
-            type: String.t(),
-            choice: String.t() | nil,
-            probabilities: %{optional(String.t()) => number()},
-            confidence: number() | nil
-          }
-
-    defstruct type: "choice", choice: nil, probabilities: %{}, confidence: nil
-  end
-
-  defmodule ScoreAnswer do
-    @moduledoc """
-    Answer to a `Score` question.
-
-    - `score` — probability-weighted value across your rubric levels
-    - `legend` — each numeric rubric level mapped to its description
-    - `probabilities` — each numeric rubric level mapped to its probability
-    - `confidence` — how certain the model is (0.0–1.0)
-    """
-
-    @type t :: %__MODULE__{
-            type: String.t(),
-            score: number() | nil,
-            legend: %{optional(String.t()) => ExTypesafe.Question.entry()},
-            probabilities: %{optional(String.t()) => number()},
-            confidence: number() | nil
-          }
-
-    defstruct type: "score", score: nil, legend: %{}, probabilities: %{}, confidence: nil
-  end
 
   @type answer :: NoulAnswer.t() | ChoiceAnswer.t() | ScoreAnswer.t() | UnknownAnswer.t()
 
@@ -119,27 +58,23 @@ defmodule ExTypesafe.Response do
   def from_map(map) when is_map(map), do: from_map(map, %{}, nil)
 
   @doc """
-  Parses a raw API response and restores keys from the supplied question map.
+  Parses a raw API response and restores keys from the supplied question map or struct.
 
-  Atom question keys are reused rather than created from strings. String question keys remain
-  strings. The caller is responsible for ensuring that no atom and string key serialize to the
-  same API key; `ExTypesafe.Client.evaluate/4` validates that invariant before making a request.
+  Struct containers are normalized without their `__struct__` field and omit `nil` fields. Atom
+  question keys are reused rather than created from strings. String question keys remain strings.
+  The caller is responsible for ensuring that no atom and string key serialize to the same API key;
+  `ExTypesafe.Client.evaluate/4` validates that invariant before making a request.
   """
-  @spec from_map(map(), map()) :: t()
-  def from_map(map, questions)
-      when is_map(map) and is_map(questions) and not is_struct(questions),
-      do: from_map(map, questions, nil)
-
-  def from_map(map, _questions) when is_map(map), do: from_map(map)
+  @spec from_map(map(), term()) :: t()
+  def from_map(map, questions) when is_map(map), do: from_map(map, questions, nil)
 
   @doc false
-  @spec from_map(map(), map(), String.t() | nil) :: t()
-  def from_map(map, questions, request_id)
-      when is_map(map) and is_map(questions) and not is_struct(questions) do
+  @spec from_map(map(), term(), String.t() | nil) :: t()
+  def from_map(map, questions, request_id) when is_map(map) do
     {answers, nouls, choices, scores} =
       map
       |> Map.get("answers", %{})
-      |> parse_answers(question_key_mapping(questions))
+      |> parse_answers(question_key_mapping(Question.normalize_container(questions)))
       |> split_answers()
 
     %__MODULE__{
@@ -153,15 +88,15 @@ defmodule ExTypesafe.Response do
     }
   end
 
-  def from_map(map, _questions, request_id) when is_map(map), do: from_map(map, %{}, request_id)
-
-  defp question_key_mapping(questions) do
+  defp question_key_mapping(questions) when is_map(questions) do
     Enum.reduce(questions, %{}, fn
       {key, _question}, mapping when is_atom(key) -> Map.put(mapping, Atom.to_string(key), key)
       {key, _question}, mapping when is_binary(key) -> Map.put(mapping, key, key)
       _entry, mapping -> mapping
     end)
   end
+
+  defp question_key_mapping(_questions), do: %{}
 
   defp parse_answers(answers, key_mapping) when is_map(answers) do
     Map.new(answers, fn {key, value} ->
@@ -183,6 +118,9 @@ defmodule ExTypesafe.Response do
         {all, nouls, choices, Map.put(scores, key, answer)}
 
       {_key, %UnknownAnswer{}}, acc ->
+        acc
+
+      {_key, _answer}, acc ->
         acc
     end)
   end

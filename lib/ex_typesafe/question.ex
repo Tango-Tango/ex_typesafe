@@ -116,6 +116,22 @@ defmodule ExTypesafe.Question do
 
   @type t :: Noul.t() | Choice.t() | Score.t()
 
+  @doc false
+  @spec normalize_container(term()) :: term()
+  # Returns :question_struct for typed question structs, a nil-stripped plain map for others, or input unchanged.
+  def normalize_container(%Noul{}), do: :question_struct
+  def normalize_container(%Choice{}), do: :question_struct
+  def normalize_container(%Score{}), do: :question_struct
+
+  def normalize_container(container) when is_struct(container) do
+    container
+    |> Map.from_struct()
+    |> Enum.reject(fn {_key, value} -> is_nil(value) end)
+    |> Map.new()
+  end
+
+  def normalize_container(container), do: container
+
   @doc """
   Builds a `Noul` question (yes/no).
 
