@@ -86,8 +86,32 @@ defmodule ExTypesafe.ConfigTest do
       end
     end
 
-    test "raises for invalid retry settings" do
+    test "raises for invalid max_retries" do
       config = Config.new(api_key: "ts-key", max_retries: -1)
+
+      assert_raise ArgumentError, ~r/max_retries must be a non-negative integer/, fn ->
+        Config.validate!(config)
+      end
+    end
+
+    test "raises for invalid retry_delay_ms" do
+      config = Config.new(api_key: "ts-key", retry_delay_ms: -100)
+
+      assert_raise ArgumentError, ~r/retry_delay_ms must be a non-negative integer/, fn ->
+        Config.validate!(config)
+      end
+    end
+
+    test "raises for invalid max_retry_delay_ms" do
+      config = Config.new(api_key: "ts-key", max_retry_delay_ms: -1)
+
+      assert_raise ArgumentError, ~r/max_retry_delay_ms must be a non-negative integer/, fn ->
+        Config.validate!(config)
+      end
+    end
+
+    test "preserves falsy non-integer retry values for validation" do
+      config = Config.new(api_key: "ts-key", max_retries: false)
 
       assert_raise ArgumentError, ~r/max_retries must be a non-negative integer/, fn ->
         Config.validate!(config)

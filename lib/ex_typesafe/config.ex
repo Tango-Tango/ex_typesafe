@@ -55,9 +55,9 @@ defmodule ExTypesafe.Config do
       api_key: opts[:api_key] || System.get_env("TYPESAFE_API_KEY"),
       base_url: opts[:base_url] || System.get_env("TYPESAFE_BASE_URL") || @default_base_url,
       model: opts[:model] || System.get_env("TYPESAFE_DEFAULT_MODEL") || @default_model,
-      max_retries: opts[:max_retries] || @default_max_retries,
-      retry_delay_ms: opts[:retry_delay_ms] || @default_retry_delay_ms,
-      max_retry_delay_ms: opts[:max_retry_delay_ms] || @default_max_retry_delay_ms
+      max_retries: Keyword.get(opts, :max_retries, @default_max_retries),
+      retry_delay_ms: Keyword.get(opts, :retry_delay_ms, @default_retry_delay_ms),
+      max_retry_delay_ms: Keyword.get(opts, :max_retry_delay_ms, @default_max_retry_delay_ms)
     }
   end
 
