@@ -2,7 +2,7 @@ defmodule ExTypesafe.MixProject do
   use Mix.Project
 
   @version "0.1.0"
-  @source_url "https://github.com/your-org/ex_typesafe"
+  @source_url "https://github.com/Tango-Tango/ex_typesafe"
 
   def project do
     [
@@ -33,7 +33,7 @@ defmodule ExTypesafe.MixProject do
 
       # Dev / test
       {:plug, "~> 1.14", only: :test},
-      {:ex_doc, "~> 0.34", only: :dev, runtime: false},
+      {:ex_doc, "~> 0.34", only: :dev, runtime: false, warn_if_outdated: true},
       {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false}
     ]
@@ -45,13 +45,14 @@ defmodule ExTypesafe.MixProject do
 
   defp package do
     [
+      name: "ex_typesafe",
       licenses: ["MIT"],
       links: %{
         "GitHub" => @source_url,
         "TypeSafe AI" => "https://typesafe.ai",
         "API docs" => "https://docs.typesafe.ai/api"
       },
-      maintainers: []
+      files: ~w(lib .formatter.exs mix.exs README* CHANGELOG* LICENSE*)
     ]
   end
 
@@ -59,7 +60,9 @@ defmodule ExTypesafe.MixProject do
     [
       main: "readme",
       source_ref: "v#{@version}",
-      extras: ["README.md"]
+      source_url: @source_url,
+      homepage_url: @source_url,
+      extras: ["README.md", "CHANGELOG.md"]
     ]
   end
 end
