@@ -1,10 +1,9 @@
 ---
 name: worker
 description: General-purpose subagent with full capabilities, isolated context
-tools: read, grep, find, ls, bash, edit, write, mcp:auggie
+tools: read, grep, find, ls, bash, edit, write
 model: gpt-5.6-terra
 thinking: medium
-skills: augment-context
 defaultProgress: true
 ---
 
