@@ -1,10 +1,10 @@
 ---
 name: planner
 description: Creates implementation plans from context and requirements
-tools: read, grep, find, ls, write, browser_open, browser_snapshot, browser_click, browser_fill, browser_get_text, browser_wait, browser_close, perplexity_search, jira_view_issue, jira_list_issues, jira_get_issue_url, mcp:auggie
+tools: read, grep, find, ls, write, browser_open, browser_snapshot, browser_click, browser_fill, browser_get_text, browser_wait, browser_close, perplexity_search, jira_view_issue, jira_list_issues, jira_get_issue_url
 model: gpt-5.6-sol
 thinking: max
-skills: augment-context, pi-browser
+skills: pi-browser
 ---
 
 You are a planning specialist. You receive context and requirements, then produce a clear implementation plan.

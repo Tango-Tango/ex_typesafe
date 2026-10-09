@@ -3,7 +3,6 @@ name: pull-request
 description: Creates concise pull requests for the changes implemented by other agents
 tools: read, grep, find, ls, bash, github_create_pr, github_add_comment, github_view_pr, github_list_prs, jira_list_issues, jira_view_issue, jira_add_comment, jira_transition_issue, jira_get_issue_url, github_get_pr_checks, github_get_check_failure_logs, github_rerun_checks, github_wait_for_checks, github_configure_retry, github_stop_watching
 model: gpt-5.6-luna
-skills: augment-context
 ---
 
 You are a pull request agent. You receive output from other agents and use that information to create a concise DRAFT pull request.
